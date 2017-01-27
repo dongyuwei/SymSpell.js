@@ -1,4 +1,18 @@
 /// <reference path="../typings/tsd.d.ts" />
+var lmdb = require('node-lmdb'); 
+var env = new lmdb.Env();
+env.open({
+    path: "./mydb",
+    mapSize: 2*1024*1024*1024, // maximum database size
+    maxDbs: 3
+});
+var dbi = env.openDbi({
+    name: "symspell",
+    create: true // will create if database did not exist
+})
+var txn = env.beginTxn();
+var txn2 = null;
+
 (function (MODES) {
     MODES[MODES["TOP"] = 0] = "TOP";
     MODES[MODES["SMALLEST"] = 1] = "SMALLEST";
@@ -27,7 +41,7 @@ var SuggestItem = (function () {
 var SymSpell = (function () {
     function SymSpell(options) {
         //Dictionary that contains both the original words and the deletes derived from them
-        this.dictionary = {};
+        // this.dictionary = {};
         //List of unique words.
         this.wordList = [];
         //maximum dictionary term length
@@ -51,15 +65,20 @@ var SymSpell = (function () {
         var result = false;
         var value;
         var dictKey = language + key;
-        var valueo = dictKey in this.dictionary ? this.dictionary[dictKey] : false;
+        var entryValue = txn.getString(dbi, dictKey);
+        var valueo = entryValue !== null ? JSON.parse(entryValue) : false;
         if (valueo !== false) {
             if (typeof valueo === 'number') {
                 var tmp = valueo;
                 value = new DictionaryItem();
                 value.suggestions.push(tmp);
-                this.dictionary[dictKey] = value;
+                txn.putString(dbi, dictKey, JSON.stringify(value));
             }
             else {
+                var dictionaryItem = new DictionaryItem();
+                dictionaryItem.suggestions = valueo.suggestions;
+                dictionaryItem.count = valueo.count;
+                valueo = dictionaryItem;
                 value = valueo;
             }
             if (value.count < Number.MAX_VALUE)
@@ -68,7 +87,7 @@ var SymSpell = (function () {
         else if (this.wordList.length < Number.MAX_VALUE) {
             value = new DictionaryItem();
             value.count++;
-            this.dictionary[dictKey] = value;
+            txn.putString(dbi, dictKey, JSON.stringify(value));
             if (key.length > this.maxLength)
                 this.maxLength = key.length;
         }
@@ -80,13 +99,20 @@ var SymSpell = (function () {
             var edits = this.edits(key, 0);
             for (var delItem in edits) {
                 var delKey = language + delItem;
-                var value2 = delKey in this.dictionary ? this.dictionary[delKey] : false;
+                var entryValue2 = txn.getString(dbi, delKey);
+                var value2 = entryValue2 !== null ? JSON.parse(entryValue2) : false;
+                if (typeof value2 === 'object') {
+                    var dictionaryItem2 = new DictionaryItem();
+                    dictionaryItem2.suggestions = value2.suggestions;
+                    dictionaryItem2.count = value2.count;
+                    value2 = dictionaryItem2;
+                }
                 if (value2 !== false) {
                     if (typeof value2 === 'number') {
                         var tmp_1 = value2;
                         var di = new DictionaryItem();
                         di.suggestions.push(tmp_1);
-                        this.dictionary[delKey] = di;
+                        txn.putString(dbi, delKey, JSON.stringify(di));
                         //if suggestions does not contain keyInt
                         if (di.suggestions.indexOf(keyInt) === -1) {
                             this.addLowestDistance(di, key, keyInt, delItem);
@@ -97,7 +123,7 @@ var SymSpell = (function () {
                     }
                 }
                 else {
-                    this.dictionary[delKey] = keyInt;
+                    txn.putString(dbi, delKey, JSON.stringify(keyInt));
                 }
             }
         }
@@ -116,11 +142,13 @@ var SymSpell = (function () {
                 wordCount++;
             }
         });
+        txn.commit();
         if (this.options.debug) {
             var tEnd = Date.now();
             var tDiff = tEnd - tStart;
-            console.log("Dictionary: " + wordCount + " words, " + Object.keys(this.dictionary).length + " entries, edit distance=" + this.options.editDistanceMax + " in " + tDiff + " ms");
+            console.log("Dictionary: " + wordCount + " words, " +  " edit distance=" + this.options.editDistanceMax + " in " + tDiff + " ms");
             console.log('memory:', process.memoryUsage());
+            
         }
     };
     SymSpell.prototype.addLowestDistance = function (item, suggestion, suggestionInt, delItem) {
@@ -180,7 +208,15 @@ var SymSpell = (function () {
                 break;
             }
             var dictKey = language + candidate;
-            var valueo = dictKey in this.dictionary ? this.dictionary[dictKey] : false;
+            txn2 = txn2 || env.beginTxn();
+            var entryValue = txn2.getString(dbi, dictKey);
+            var valueo = entryValue !== null ? JSON.parse(entryValue) : false;
+            if (typeof valueo === 'object') {
+                var dictionaryItem = new DictionaryItem();
+                dictionaryItem.suggestions = valueo.suggestions;
+                dictionaryItem.count = valueo.count;
+                valueo = dictionaryItem;
+            }
             if (valueo !== false) {
                 var value = new DictionaryItem();
                 if (typeof valueo === 'number') {
@@ -252,7 +288,15 @@ var SymSpell = (function () {
                         }
                         if (distance <= editDistanceMax) {
                             var dictKey2 = language + suggestion;
-                            var value2 = dictKey2 in self.dictionary ? self.dictionary[dictKey2] : false;
+                            txn2 = txn2 || env.beginTxn();
+                            var entryValue2 = txn2.getString(dbi, dictKey2);
+                            var value2 = entryValue2 !== null ? JSON.parse(entryValue2) : false;
+                            if (typeof value2 === 'object') {
+                                var dictionaryItem2 = new DictionaryItem();
+                                dictionaryItem2.suggestions = value2.suggestions;
+                                dictionaryItem2.count = value2.count;
+                                value2 = dictionaryItem2;
+                            }
                             if (value2 !== false) {
                                 var si = new SuggestItem();
                                 si.term = suggestion;
