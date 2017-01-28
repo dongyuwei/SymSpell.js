@@ -157,6 +157,7 @@ var SymSpell = (function () {
             txn.putString(dbi, '__word_list__', JSON.stringify(this.wordList));
             txn.putString(dbi, '__max_length__', this.maxLength);
             txn.commit();
+            txn = env.beginTxn({ readOnly: true });
         }
         
         if (this.options.debug) {
