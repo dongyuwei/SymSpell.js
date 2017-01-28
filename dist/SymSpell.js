@@ -142,8 +142,6 @@ var SymSpell = (function () {
             var tStart = Date.now();
         }
         if (preCalculated) {
-            txn.commit();
-            txn = env.beginTxn({ readOnly: true });
             this.wordList = JSON.parse(txn.getString(dbi, '__word_list__'));
             this.maxLength = JSON.parse(txn.getString(dbi, '__max_length__'));
         } else {
