@@ -1,8 +1,15 @@
 /// <reference path="../typings/tsd.d.ts" />
+var fs = require('fs');
 var lmdb = require('node-lmdb'); 
 var env = new lmdb.Env();
+
+if (!fs.existsSync('./db')) {
+    fs.mkdirSync('./db');
+} else {
+    var preCalculated = true;
+}
 env.open({
-    path: "./mydb",
+    path: "./db",
     mapSize: 2*1024*1024*1024, // maximum database size
     maxDbs: 3
 });
@@ -11,7 +18,6 @@ var dbi = env.openDbi({
     create: true // will create if database did not exist
 })
 var txn = env.beginTxn();
-var txn2 = null;
 
 (function (MODES) {
     MODES[MODES["TOP"] = 0] = "TOP";
@@ -135,20 +141,29 @@ var SymSpell = (function () {
             console.log('Creating dictionary...');
             var tStart = Date.now();
         }
-        var words = this.parseWords(corpus);
-        var self = this;
-        words.forEach(function (word) {
-            if (self.createDictionaryEntry(word, language)) {
-                wordCount++;
-            }
-        });
-        txn.commit();
+        if (preCalculated) {
+            txn.commit();
+            txn = env.beginTxn({ readOnly: true });
+            this.wordList = JSON.parse(txn.getString(dbi, '__word_list__'));
+            this.maxLength = JSON.parse(txn.getString(dbi, '__max_length__'));
+        } else {
+            var words = this.parseWords(corpus);
+            var self = this;
+            words.forEach(function (word) {
+                if (self.createDictionaryEntry(word, language)) {
+                    wordCount++;
+                }
+            });
+            txn.putString(dbi, '__word_list__', JSON.stringify(this.wordList));
+            txn.putString(dbi, '__max_length__', this.maxLength);
+            txn.commit();
+        }
+        
         if (this.options.debug) {
             var tEnd = Date.now();
             var tDiff = tEnd - tStart;
-            console.log("Dictionary: " + wordCount + " words, " +  " edit distance=" + this.options.editDistanceMax + " in " + tDiff + " ms");
+            console.log("Dictionary: " + (wordCount || this.wordList.length) + " words, " +  " edit distance=" + this.options.editDistanceMax + " in " + tDiff + " ms");
             console.log('memory:', process.memoryUsage());
-            
         }
     };
     SymSpell.prototype.addLowestDistance = function (item, suggestion, suggestionInt, delItem) {
@@ -208,8 +223,7 @@ var SymSpell = (function () {
                 break;
             }
             var dictKey = language + candidate;
-            txn2 = txn2 || env.beginTxn();
-            var entryValue = txn2.getString(dbi, dictKey);
+            var entryValue = txn.getString(dbi, dictKey);
             var valueo = entryValue !== null ? JSON.parse(entryValue) : false;
             if (typeof valueo === 'object') {
                 var dictionaryItem = new DictionaryItem();
@@ -288,8 +302,7 @@ var SymSpell = (function () {
                         }
                         if (distance <= editDistanceMax) {
                             var dictKey2 = language + suggestion;
-                            txn2 = txn2 || env.beginTxn();
-                            var entryValue2 = txn2.getString(dbi, dictKey2);
+                            var entryValue2 = txn.getString(dbi, dictKey2);
                             var value2 = entryValue2 !== null ? JSON.parse(entryValue2) : false;
                             if (typeof value2 === 'object') {
                                 var dictionaryItem2 = new DictionaryItem();
