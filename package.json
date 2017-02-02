@@ -10,7 +10,9 @@
   "license": "LGPL",
   "description": "",
   "dependencies": {
-    "node-lmdb": "^0.4.3"
+    "node-lmdb": "^0.4.3",
+    "triejs": "^0.1.5",
+    "express": "3.0.3"
   },
   "devDependencies": {
     "gulp": "^3.9.0",

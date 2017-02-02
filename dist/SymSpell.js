@@ -1,5 +1,6 @@
 /// <reference path="../typings/tsd.d.ts" />
 var fs = require('fs');
+var googleDict = require('../dict/google_227800_words.json');
 var lmdb = require('node-lmdb'); 
 var env = new lmdb.Env();
 
@@ -135,7 +136,7 @@ var SymSpell = (function () {
         }
         return result;
     }; //end createDictionaryEntry
-    SymSpell.prototype.createDictionary = function (corpus, language) {
+    SymSpell.prototype.createDictionary = function (language) {
         var wordCount = 0;
         if (this.options.debug) {
             console.log('Creating dictionary...');
@@ -145,7 +146,9 @@ var SymSpell = (function () {
             this.wordList = JSON.parse(txn.getString(dbi, '__word_list__'));
             this.maxLength = JSON.parse(txn.getString(dbi, '__max_length__'));
         } else {
-            var words = this.parseWords(corpus);
+            // var words = this.parseWords(corpus);
+            var words = Object.keys(googleDict);
+
             var self = this;
             words.forEach(function (word) {
                 if (self.createDictionaryEntry(word, language)) {
