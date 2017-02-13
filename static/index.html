@@ -2,42 +2,60 @@
 <html>
     <head>
         <title>hallelujah input method on web</title>
-        <link rel="stylesheet" type="text/css" href="/richAutocomplete.min.css" />
+        <link rel="stylesheet" type="text/css" href="/awesomplete.css" />
         <style>
             #webim {
                 display: inline-block;
                 width: 600px;
-                height: 300px;
-            }
-
-            .candidates {
-                width: 600px;
+                height: 50px;
+                vertical-align: top;
+                padding: 5px;
             }
         </style>
     </head>
     <body>
         <input type="text" id='webim'>
-        <div class="candidates"></div>
 
-        <script src="/jquery-2.2.1.min.js" integrity="sha256-gvQgAFzTH6trSrAWoH1iPo9Xc96QxSZ3feW6kem+O00=" crossorigin="anonymous"></script>
-        <script src="/jquery.richAutocomplete.min.js" type="text/javascript"></script>
+        <script src='/awesomplete.js'></script>
+        <script src="/jquery-2.2.1.min.js"></script>
+
         <script>
             void function(){
                 if ("WebSocket" in window) {
                     var ws = new WebSocket("ws://127.0.0.1:3001");
-
+                    
+                    var awesomplete, oInput = $('#webim');
                     ws.onopen = function() {
                         console.log("websocket connected!");
+                        
+                        awesomplete = new Awesomplete(oInput[0], {
+                            minChars: 1, 
+                            autoFirst: true,
+                            filter: function (item, input) {
+                                var arr = input.trim().split(' ');
+                                var lastWord = arr[arr.length - 1];
+                                return item.value.indexOf(lastWord) === 0;
+                            },
+                            replace: function (text) {
+                                var arr = this.input.value.trim().split(' ');
+                                arr.pop();
+                                arr.push(text);
+                                this.input.value = arr.join(' ') + ' ';
+                            }
+                        });   
 
-                        $('#webim').on('input keyup', function(){
-                            console.log(this.value);
-                            ws.send(this.value);
+                        oInput.on('input', function(){
+                            var arr = this.value.trim().split(' ');
+                            var lastWord = arr[arr.length - 1];
+                            if (lastWord.length > 0) {
+                                ws.send(lastWord);
+                            } else {
+                                awesomplete.list = [];
+                            }
                         });
                     };
                     ws.onmessage = function (evt) {
-                        var data = evt.data;
-                        $('.candidates').text(JSON.parse(data).join(' '));
-                        console.log(evt.data);
+                        awesomplete.list = JSON.parse(evt.data);
                     };
                     ws.onclose = function() {
                         console.log("websocket closed");
