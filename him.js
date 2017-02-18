@@ -1,16 +1,25 @@
 var express = require('express');
-var Triejs = require('triejs');
+var level = require('level');
 var googleDict = require('./dict/google_227800_words.json');
 
-var trie = null;
-function buildTrie (){
-    trie = new Triejs();
-    for (let word in googleDict) {
-        trie.add(word);
-    }
-}
+var db = level(__dirname + '/level_db');
 
-buildTrie();
+function storeWords() {
+    var ops = [];
+    for (let word in googleDict) {
+        ops.push({
+            type: 'put',
+            key: word,
+            value: ''
+        });
+    }
+
+    db.batch(ops, function(err) {
+        if (err) return console.log('Ooops!', err)
+        console.log('all words stored!');
+    });
+}
+storeWords();
 
 process.on('uncaughtException', function(err) {
     console.error('Caught exception: ', err);
@@ -33,20 +42,38 @@ console.log('################################################');
 
 
 var WebSocketServer = require('uws').Server;
-var wss = new WebSocketServer({ port: 3001 });
+var wss = new WebSocketServer({
+    port: 3001
+});
 
-function onMessage(message, ws) {
-    console.log('received: ' + message);
-
-    var result = trie.find(message).sort(function(w1, w2){
-        return googleDict[w2] - googleDict[w1];
+function findPrefixOf(word, callback) {
+    var list = [];
+    db.createReadStream({
+            start: word, // jump to first key with the word
+            end: word + "\xFF" // stop at the last key with the word
+        })
+        .on('data', function(data) {
+            list.push(data.key);
+        })
+        .on('error', function() {
+            console.log('error', arguments);
+            callback(list);
+        })
+        .on('close', function() {
+            callback(list);
+        });
+}
+function onMessage(word, ws) {
+    findPrefixOf(word, function (list) {
+        list = list.sort(function(w1, w2) {
+            return googleDict[w2] - googleDict[w1];
+        });
+        ws.send(JSON.stringify(list));
     });
-    console.log(result);
-    ws.send(JSON.stringify(result));
 }
 
 wss.on('connection', function(ws) {
-    ws.on('message', function(message){
+    ws.on('message', function(message) {
         onMessage(message, ws);
     });
 });
