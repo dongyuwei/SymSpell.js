@@ -38,11 +38,12 @@
                     var ws = new WebSocket("ws://" + location.hostname + ":3001");
                     
                     var awesomplete, oInput = $('#webim');
+                    var MinChars = 3;
                     ws.onopen = function() {
                         console.log("websocket connected!");
                         
                         awesomplete = new Awesomplete(oInput[0], {
-                            minChars: 1, 
+                            minChars: MinChars, 
                             autoFirst: true,
                             filter: function (item, input) {
                                 var arr = input.trim().split(' ');
@@ -61,7 +62,7 @@
                         oInput.on('input', function(){
                             var arr = this.value.trim().split(' ');
                             var lastWord = arr[arr.length - 1];
-                            if (lastWord.length > 0) {
+                            if (lastWord.length >= MinChars) {
                                 ws.send(lastWord);
                             } else {
                                 awesomplete.list = [];
