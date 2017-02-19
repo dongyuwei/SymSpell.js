@@ -1,20 +1,33 @@
 <!DOCTYPE html>
 <html>
     <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=0">
+        <meta name="format-detection" content="telephone=no">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="renderer" content="webkit">
+        <meta name="robots" content="index, follow">
+
         <title>hallelujah input method on web</title>
         <link rel="stylesheet" type="text/css" href="/awesomplete.css" />
         <style>
+            main {
+                max-width: 70vw;
+                margin: 10px auto auto auto;
+            }
+
             #webim {
-                display: inline-block;
-                width: 600px;
-                height: 50px;
+                width: 70vw;
                 vertical-align: top;
                 padding: 5px;
             }
         </style>
     </head>
     <body>
-        <input type="text" id='webim'>
+        <main>
+            <a href="https://github.com/dongyuwei/hallelujahIM" target="_blank">Mac OSX版hallelujah英文输入法</a>
+            <textarea id="webim" cols="30" rows="3" placeholder="please input any english words..."></textarea>
+        </main>
 
         <script src='/awesomplete.js'></script>
         <script src="/jquery-2.2.1.min.js"></script>
@@ -22,7 +35,7 @@
         <script>
             void function(){
                 if ("WebSocket" in window) {
-                    var ws = new WebSocket("ws://127.0.0.1:3001");
+                    var ws = new WebSocket("ws://" + location.hostname + ":3001");
                     
                     var awesomplete, oInput = $('#webim');
                     ws.onopen = function() {
