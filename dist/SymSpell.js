@@ -56,7 +56,7 @@ var SymSpell = (function () {
         this.options = {
             mode: MODES.TOP,
             verbose: 2,
-            editDistanceMax: 2,
+            editDistanceMax: 3,
             debug: true
         };
         if (options) {

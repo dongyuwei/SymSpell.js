@@ -3,7 +3,8 @@ var SymSpell_1 = require('./SymSpell');
 var fs = require('fs');
 var readline = require('readline');
 var s = new SymSpell_1.SymSpell();
-s.createDictionary(fs.readFileSync('./big.txt').toString(), '');
+// s.createDictionary(fs.readFileSync('./small.txt').toString(), '');
+s.createDictionary('');
 var rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -11,6 +12,7 @@ var rl = readline.createInterface({
 });
 rl.on('line', function (word) {
     var suggestions = s.correct(word.trim(), '');
+    console.log('===', suggestions);
     for (var key in suggestions) {
         var suggestion = suggestions[key];
         console.log(suggestion.term + " " + suggestion.distance + " " + suggestion.count, suggestion);

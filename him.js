@@ -63,11 +63,23 @@ function findPrefixOf(word, callback) {
             callback(list);
         });
 }
+
+var SymSpell = require('./dist/SymSpell');
+var symSpell = new SymSpell.SymSpell();
+symSpell.createDictionary('');
+
 function onMessage(word, ws) {
     findPrefixOf(word, function (list) {
-        list = list.sort(function(w1, w2) {
-            return googleDict[w2] - googleDict[w1];
-        });
+        if (list.length > 0) {
+            list = list.sort(function(w1, w2) {
+                return googleDict[w2] - googleDict[w1];
+            });
+        } else {
+            var suggestions = symSpell.correct(word.trim(), '');
+            list = suggestions.map(function(item){
+                return item.term
+            });
+        }
         ws.send(JSON.stringify(list));
     });
 }

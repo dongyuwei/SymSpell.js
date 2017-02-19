@@ -48,7 +48,8 @@
                             filter: function (item, input) {
                                 var arr = input.trim().split(' ');
                                 var lastWord = arr[arr.length - 1];
-                                return item.value.indexOf(lastWord) === 0;
+                                return true; //for spellchck
+                                // return item.value.indexOf(lastWord) === 0;
                             },
                             replace: function (text) {
                                 var arr = this.input.value.trim().split(' ');
@@ -70,7 +71,11 @@
                         });
                     };
                     ws.onmessage = function (evt) {
-                        awesomplete.list = JSON.parse(evt.data);
+                        setTimeout(function() {
+                            console.log(evt.data);
+                            awesomplete.list = JSON.parse(evt.data);
+                        }, 20);
+                        
                     };
                     ws.onclose = function() {
                         console.log("websocket closed");
