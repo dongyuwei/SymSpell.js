@@ -1,4 +1,9 @@
 /// <reference path="../typings/tsd.d.ts" />
+"use strict";
+var path = require('path');
+var fs = require('fs');
+var lmdb = require('node-lmdb');
+var lmdbEnv = new lmdb.Env(), dbi, transaction;
 (function (MODES) {
     MODES[MODES["TOP"] = 0] = "TOP";
     MODES[MODES["SMALLEST"] = 1] = "SMALLEST";
@@ -15,7 +20,7 @@ var DictionaryItem = (function () {
         this.count = 0;
     };
     return DictionaryItem;
-})();
+}());
 var SuggestItem = (function () {
     function SuggestItem() {
         this.term = '';
@@ -23,11 +28,9 @@ var SuggestItem = (function () {
         this.count = 0;
     }
     return SuggestItem;
-})();
+}());
 var SymSpell = (function () {
     function SymSpell(options) {
-        //Dictionary that contains both the original words and the deletes derived from them
-        this.dictionary = {};
         //List of unique words.
         this.wordList = [];
         //maximum dictionary term length
@@ -51,16 +54,19 @@ var SymSpell = (function () {
         var result = false;
         var value;
         var dictKey = language + key;
-        var valueo = dictKey in this.dictionary ? this.dictionary[dictKey] : false;
+        var entryValue = transaction.getString(dbi, dictKey);
+        var valueo = entryValue !== null ? JSON.parse(entryValue) : false;
         if (valueo !== false) {
             if (typeof valueo === 'number') {
                 var tmp = valueo;
                 value = new DictionaryItem();
                 value.suggestions.push(tmp);
-                this.dictionary[dictKey] = value;
+                transaction.putString(dbi, dictKey, JSON.stringify(value));
             }
             else {
-                value = valueo;
+                value = new DictionaryItem();
+                value.suggestions = valueo.suggestions;
+                value.count = valueo.count;
             }
             if (value.count < Number.MAX_VALUE)
                 value.count++;
@@ -68,7 +74,7 @@ var SymSpell = (function () {
         else if (this.wordList.length < Number.MAX_VALUE) {
             value = new DictionaryItem();
             value.count++;
-            this.dictionary[dictKey] = value;
+            transaction.putString(dbi, dictKey, JSON.stringify(value));
             if (key.length > this.maxLength)
                 this.maxLength = key.length;
         }
@@ -80,13 +86,20 @@ var SymSpell = (function () {
             var edits = this.edits(key, 0);
             for (var delItem in edits) {
                 var delKey = language + delItem;
-                var value2 = delKey in this.dictionary ? this.dictionary[delKey] : false;
+                var entryValue2 = transaction.getString(dbi, delKey);
+                var value2 = entryValue2 !== null ? JSON.parse(entryValue2) : false;
+                if (typeof value2 === 'object') {
+                    var di = new DictionaryItem();
+                    di.suggestions = value2.suggestions;
+                    di.count = value2.count;
+                    value2 = di;
+                }
                 if (value2 !== false) {
                     if (typeof value2 === 'number') {
                         var tmp_1 = value2;
                         var di = new DictionaryItem();
                         di.suggestions.push(tmp_1);
-                        this.dictionary[delKey] = di;
+                        transaction.putString(dbi, delKey, JSON.stringify(di));
                         //if suggestions does not contain keyInt
                         if (di.suggestions.indexOf(keyInt) === -1) {
                             this.addLowestDistance(di, key, keyInt, delItem);
@@ -97,29 +110,60 @@ var SymSpell = (function () {
                     }
                 }
                 else {
-                    this.dictionary[delKey] = keyInt;
+                    transaction.putString(dbi, delKey, JSON.stringify(keyInt));
                 }
             }
         }
         return result;
     }; //end createDictionaryEntry
-    SymSpell.prototype.createDictionary = function (corpus, language) {
+    SymSpell.prototype.initLmdb = function (dbName) {
+        var preCalculated = false;
+        var dbPath = path.join(__dirname, '../', 'db', dbName);
+        if (!fs.existsSync(dbPath)) {
+            fs.mkdirSync(dbPath);
+        }
+        else {
+            preCalculated = true;
+        }
+        lmdbEnv.open({
+            path: dbPath,
+            mapSize: 10 * 1024 * 1024 * 1024,
+            maxDbs: 6
+        });
+        dbi = lmdbEnv.openDbi({
+            name: "symspell",
+            create: true
+        });
+        transaction = lmdbEnv.beginTxn();
+        return preCalculated;
+    };
+    SymSpell.prototype.createDictionary = function (corpus, language, dbName) {
         var wordCount = 0;
         if (this.options.debug) {
             console.log('Creating dictionary...');
             var tStart = Date.now();
         }
-        var words = this.parseWords(corpus);
-        var self = this;
-        words.forEach(function (word) {
-            if (self.createDictionaryEntry(word, language)) {
-                wordCount++;
-            }
-        });
+        if (this.initLmdb(dbName)) {
+            this.wordList = JSON.parse(transaction.getString(dbi, '__word_list__'));
+            this.maxLength = transaction.getNumber(dbi, '__max_length__');
+        }
+        else {
+            var words = this.parseWords(corpus);
+            var self = this;
+            words.forEach(function (word) {
+                if (self.createDictionaryEntry(word, language)) {
+                    wordCount++;
+                }
+            });
+            transaction.putString(dbi, '__word_list__', JSON.stringify(this.wordList));
+            transaction.putNumber(dbi, '__max_length__', this.maxLength);
+            transaction.commit();
+            transaction = lmdbEnv.beginTxn({ readOnly: true });
+        }
         if (this.options.debug) {
             var tEnd = Date.now();
             var tDiff = tEnd - tStart;
-            console.log("Dictionary: " + wordCount + " words, " + Object.keys(this.dictionary).length + " entries, edit distance=" + this.options.editDistanceMax + " in " + tDiff + " ms");
+            console.log("Dictionary: " + (wordCount || this.wordList.length) + " words, edit distance=" + this.options.editDistanceMax + " in " + tDiff + " ms");
             console.log('memory:', process.memoryUsage());
         }
     };
@@ -180,14 +224,16 @@ var SymSpell = (function () {
                 break;
             }
             var dictKey = language + candidate;
-            var valueo = dictKey in this.dictionary ? this.dictionary[dictKey] : false;
+            var entryValue = transaction.getString(dbi, dictKey);
+            var valueo = entryValue !== null ? JSON.parse(entryValue) : false;
             if (valueo !== false) {
                 var value = new DictionaryItem();
                 if (typeof valueo === 'number') {
                     value.suggestions.push(valueo);
                 }
                 else {
-                    value = valueo;
+                    value.suggestions = valueo.suggestions;
+                    value.count = valueo.count;
                 }
                 //if count>0 then candidate entry is correct dictionary term, not only delete item
                 if (value.count > 0 && !(candidate in obj2)) {
@@ -252,7 +298,8 @@ var SymSpell = (function () {
                         }
                         if (distance <= editDistanceMax) {
                             var dictKey2 = language + suggestion;
-                            var value2 = dictKey2 in self.dictionary ? self.dictionary[dictKey2] : false;
+                            var entryValue2 = transaction.getString(dbi, dictKey2);
+                            var value2 = entryValue2 !== null ? JSON.parse(entryValue2) : false;
                             if (value2 !== false) {
                                 var si = new SuggestItem();
                                 si.term = suggestion;
@@ -356,7 +403,7 @@ var SymSpell = (function () {
         return H[m + 1][n + 1];
     };
     return SymSpell;
-})();
+}());
 exports.SymSpell = SymSpell; //end SymSpell class
 
 //# sourceMappingURL=SymSpell.js.map

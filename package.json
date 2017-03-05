@@ -1,15 +1,18 @@
 {
   "name": "symspell_ts",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "SymSpell.js",
   "scripts": {
-    "test": "node ./dist/test2.js",
+    "build": "./node_modules/.bin/gulp build",
+    "test": "./node_modules/.bin/gulp build && node ./dist/test2.js",
     "start": "node ./dist/test.js"
   },
   "author": "Lenny Urbanowski",
   "license": "LGPL",
   "description": "",
-  "dependencies": {},
+  "dependencies": {
+    "node-lmdb": "^0.4.3"
+  },
   "devDependencies": {
     "gulp": "^3.9.0",
     "gulp-sourcemaps": "^1.6.0",

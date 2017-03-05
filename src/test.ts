@@ -6,7 +6,7 @@ import * as readline from 'readline';
 
 var s = new SymSpell();
 
-s.createDictionary(fs.readFileSync('./big.txt').toString(), '');
+s.createDictionary(fs.readFileSync('./big.txt').toString(), '', 'big');
 
 var rl = readline.createInterface({
   input: process.stdin,

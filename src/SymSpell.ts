@@ -1,5 +1,11 @@
 /// <reference path="../typings/tsd.d.ts" />
 
+import * as path from 'path';
+import * as fs from 'fs';
+const lmdb = require('node-lmdb');
+
+var lmdbEnv = new lmdb.Env(), dbi, transaction;
+
 export enum MODES { TOP, SMALLEST, ALL }
 
 class DictionaryItem {
@@ -27,10 +33,6 @@ interface OptionsObj {
 }
 
 export class SymSpell {
-
-  //Dictionary that contains both the original words and the deletes derived from them
-  dictionary: Object = {};
-
   //List of unique words.
   wordList: Array<string> = [];
 
@@ -61,16 +63,19 @@ export class SymSpell {
     var value: DictionaryItem;
 
     var dictKey:string = language + key;
-    var valueo: any = dictKey in this.dictionary ? this.dictionary[dictKey] : false;
+    var entryValue = transaction.getString(dbi, dictKey);
+    var valueo = entryValue !== null ? JSON.parse(entryValue) : false;
 
     if (valueo !== false) {
       if(typeof valueo === 'number'){
         var tmp: number = valueo;
         value = new DictionaryItem();
         value.suggestions.push(tmp);
-        this.dictionary[dictKey] = value;
+        transaction.putString(dbi, dictKey, JSON.stringify(value));
       } else {
-        value = valueo;
+        value = new DictionaryItem();
+        value.suggestions = valueo.suggestions;
+        value.count = valueo.count;
       }
 
       if (value.count < Number.MAX_VALUE) value.count++;
@@ -78,7 +83,7 @@ export class SymSpell {
     } else if (this.wordList.length < Number.MAX_VALUE) {
       value = new DictionaryItem();
       value.count++;
-      this.dictionary[dictKey] = value;
+      transaction.putString(dbi, dictKey, JSON.stringify(value));
       if (key.length > this.maxLength) this.maxLength = key.length;
     }
 
@@ -94,13 +99,22 @@ export class SymSpell {
 
       for(let delItem in edits) {
         let delKey: string = language + delItem;
-        let value2: any = delKey in this.dictionary ? this.dictionary[delKey] : false;
+        let entryValue2 = transaction.getString(dbi, delKey);
+        let value2 = entryValue2 !== null ? JSON.parse(entryValue2) : false;
+
+        if (typeof value2 === 'object') {
+            let di: DictionaryItem = new DictionaryItem();
+            di.suggestions = value2.suggestions;
+            di.count = value2.count;
+            value2 = di;
+        }
+
         if (value2 !== false) {
           if (typeof value2 === 'number') {
             let tmp: number = value2;
             let di: DictionaryItem = new DictionaryItem();
             di.suggestions.push(tmp);
-            this.dictionary[delKey] = di;
+            transaction.putString(dbi, delKey, JSON.stringify(di));
 
             //if suggestions does not contain keyInt
             if (di.suggestions.indexOf(keyInt) === -1) {
@@ -111,7 +125,7 @@ export class SymSpell {
             this.addLowestDistance(value2, key, keyInt, delItem);
           }
         }else{
-          this.dictionary[delKey] = keyInt;
+          transaction.putString(dbi, delKey, JSON.stringify(keyInt));
         }
 
       }
@@ -119,7 +133,31 @@ export class SymSpell {
     return result;
   } //end createDictionaryEntry
 
-  createDictionary(corpus: string, language: string): void {
+  initLmdb(dbName: string): boolean{
+    var preCalculated: boolean = false;
+    var dbPath = path.join(__dirname, '../', 'db', dbName);
+    if (!fs.existsSync(dbPath)) {
+        fs.mkdirSync(dbPath);
+    } else {
+      preCalculated = true;
+    }
+
+    lmdbEnv.open({
+      path: dbPath,
+      mapSize: 10*1024*1024*1024, // maximum database size
+      maxDbs: 6
+    });
+
+    dbi = lmdbEnv.openDbi({
+        name: "symspell",
+        create: true
+    });
+
+    transaction = lmdbEnv.beginTxn();
+    return preCalculated;
+  }
+
+  createDictionary(corpus: string, language: string, dbName: string): void {
 
     var wordCount: number = 0;
 
@@ -128,19 +166,29 @@ export class SymSpell {
       var tStart: number = Date.now();
     }
 
-    var words = this.parseWords(corpus);
-    var self = this;
-    words.forEach(function(word) {
-      if(self.createDictionaryEntry(word, language)) {
-        wordCount++;
-      }
-    });
+    if (this.initLmdb(dbName)) {
+      this.wordList = JSON.parse(transaction.getString(dbi, '__word_list__'));
+      this.maxLength = transaction.getNumber(dbi, '__max_length__');
+    } else {
+      var words = this.parseWords(corpus);
+      var self = this;
+      words.forEach(function(word) {
+        if(self.createDictionaryEntry(word, language)) {
+          wordCount++;
+        }
+      });
+
+      transaction.putString(dbi, '__word_list__', JSON.stringify(this.wordList));
+      transaction.putNumber(dbi, '__max_length__', this.maxLength);
+      transaction.commit();
+      transaction = lmdbEnv.beginTxn({ readOnly: true });
+    }
 
     if (this.options.debug) {
       var tEnd: number = Date.now();
       var tDiff: number = tEnd - tStart;
 
-      console.log(`Dictionary: ${wordCount} words, ${Object.keys(this.dictionary).length} entries, edit distance=${this.options.editDistanceMax} in ${tDiff} ms`);
+      console.log(`Dictionary: ${wordCount || this.wordList.length} words, edit distance=${this.options.editDistanceMax} in ${tDiff} ms`);
       console.log('memory:', process.memoryUsage());
     }
   }
@@ -218,7 +266,8 @@ export class SymSpell {
       }
 
       var dictKey: string = language + candidate;
-      var valueo: any = dictKey in this.dictionary ? this.dictionary[dictKey] : false;
+      var entryValue = transaction.getString(dbi, dictKey);
+      var valueo = entryValue !== null ? JSON.parse(entryValue) : false;
 
       if (valueo !== false) {
         var value: DictionaryItem = new DictionaryItem();
@@ -226,7 +275,8 @@ export class SymSpell {
         if (typeof valueo === 'number') {
           value.suggestions.push(valueo);
         } else {
-          value = valueo;
+          value.suggestions = valueo.suggestions;
+          value.count = valueo.count;
         }
 
         //if count>0 then candidate entry is correct dictionary term, not only delete item
@@ -295,7 +345,8 @@ export class SymSpell {
 
             if (distance <= editDistanceMax) {
               var dictKey2 = language + suggestion;
-              var value2: any = dictKey2 in self.dictionary ? self.dictionary[dictKey2] : false;
+              var entryValue2 = transaction.getString(dbi, dictKey2);
+              var value2: any = entryValue2 !== null ? JSON.parse(entryValue2) : false;
               if (value2 !== false) {
                 var si: SuggestItem = new SuggestItem();
                 si.term = suggestion;

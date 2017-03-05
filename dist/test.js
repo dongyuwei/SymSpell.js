@@ -1,9 +1,10 @@
 /// <reference path="../typings/tsd.d.ts" />
+"use strict";
 var SymSpell_1 = require('./SymSpell');
 var fs = require('fs');
 var readline = require('readline');
 var s = new SymSpell_1.SymSpell();
-s.createDictionary(fs.readFileSync('./big.txt').toString(), '');
+s.createDictionary(fs.readFileSync('./big.txt').toString(), '', 'big');
 var rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,

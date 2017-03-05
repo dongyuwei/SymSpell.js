@@ -7,7 +7,7 @@ import * as assert from "assert";
 
 var s = new SymSpell();
 
-s.createDictionary(fs.readFileSync('./small.txt').toString(), '');
+s.createDictionary(fs.readFileSync('./small.txt').toString(), '', 'small');
 
 assert.deepEqual(s.correct('foo', ''), []);
 

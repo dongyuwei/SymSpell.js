@@ -4,7 +4,7 @@ var SymSpell_1 = require('./SymSpell');
 var fs = require('fs');
 var assert = require("assert");
 var s = new SymSpell_1.SymSpell();
-s.createDictionary(fs.readFileSync('./small.txt').toString(), '');
+s.createDictionary(fs.readFileSync('./small.txt').toString(), '', 'small');
 assert.deepEqual(s.correct('foo', ''), []);
 var suggestions = s.correct('abou', '');
 assert.equal(JSON.stringify(suggestions), '[{"term":"about","distance":1,"count":1},{"term":"above","distance":2,"count":1},{"term":"abort","distance":2,"count":1}]');
