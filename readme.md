@@ -38,6 +38,7 @@ If you'd like to contribute or modify this library take the following steps.
 * Install dev dependencies with `npm install`
 * Modify code in the src folder
 * Run `gulp build` to rebuild the js in the dist folder.
+* run `npm test` to execture the unit test for small word set.
 * run `npm start` to execture the test file.
 
 Feel free to submit pull requests

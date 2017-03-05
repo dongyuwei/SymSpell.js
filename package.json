@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "SymSpell.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start":"node ./dist/test.js"
+    "test": "node ./dist/test2.js",
+    "start": "node ./dist/test.js"
   },
   "author": "Lenny Urbanowski",
   "license": "LGPL",
